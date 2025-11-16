@@ -1,0 +1,8 @@
+[gd_scene load_steps=2 format=3 uid="uid://your_uid_here"]
+
+[ext_resource type="Script" path="res://src/managers/MultiplayerManager.cs" id="1"]
+
+[node name="MultiplayerManager" type="Node"]
+script = ExtResource("1")
+port = 7000
+max_players = 8
