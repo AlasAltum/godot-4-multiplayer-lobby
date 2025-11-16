@@ -36,7 +36,10 @@ Godot4MultiplayerLobby/
 - `Lobby.cs`: Handles user input, updates model, refreshes view
 
 
+## Development Tips
 
+- Use multiple instances of the project to run a host and a client simultaneously without opening two separate editors, saving development time.
+- Check my other repository for an example of using command-line arguments to launch a multiplayer-ready game without needing to create or join a server, further saving development time.
 
 
 ## RPC Flow Detailed Documentation
@@ -45,6 +48,10 @@ This document provides a deep dive into the RPC (Remote Procedure Call) flow use
 
 
 ## Complete Player Connection Flow
+
+### Flow Diagram
+
+![CompleteFlow](docs/assets/CompleteDiagramFLow.png)
 
 
 ### Step 1: Server Opens Connection
@@ -62,7 +69,7 @@ MultiplayerManager.Instance.HostServer("127.0.0.1");
 - Godot automatically attempts connection
 
 
-### Step 1: Client Initiates Connection
+### Step 2: Client Initiates Connection
 
 **Location**: `Lobby.cs` → `OnJoinPressed()`
 
@@ -77,7 +84,7 @@ MultiplayerManager.Instance.JoinServer("127.0.0.1");
 - Godot automatically attempts connection
 
 
-### Step 2: Server Detects Connection
+### Step 3: Server Detects Connection
 
 **Location**: `MultiplayerManager.cs` → `OnPeerConnected()`
 
@@ -102,7 +109,7 @@ private void OnPeerConnected(long peerId)
 SERVER --[RPC: Client_GetRequestPlayerName()]--> CLIENT (peerId)
 ```
 
-### Step 3: Client Receives Request
+### Step 4: Client Receives Request
 
 **Location**: `MultiplayerManager.cs` → `Client_GetRequestPlayerName()`
 
@@ -139,7 +146,7 @@ SERVER --[RPC: Multicast_SyncAllPlayers(jsonOfAllPlayers)]--> ALL CLIENTS
        --[Also runs locally on server (CallLocal = true)]
 ```
 
-### Step 5: All Peers Synchronize
+### Step 6: All Peers Synchronize
 
 **Location**: `MultiplayerManager.cs` → `Multicast_SyncAllPlayers()`
 
@@ -178,10 +185,6 @@ MultiplayerManager.Multicast_SyncAllPlayers()
         └─> Lobby.OnPlayerListUpdated()
             └─> UpdatePlayerListUI()
 ```
-
-## Complete Flow Diagram
-
-![CompleteFlow](docs/assets/CompleteDiagramFLow.png)
 
 
 ## Name Update Flow
@@ -333,22 +336,6 @@ Logger.Warning("Low player count");       // Use for potential issues
 Logger.Error("Connection failed");        // Use for critical errors
 ```
 
-### Common Issues
-
-**Issue**: Players not appearing in lobby
-- Check: Is `MultiplayerManager` set as autoload?
-- Check: Are signals connected in `Lobby._Ready()`?
-- Check: Is JSON deserialization working? (Add debug prints)
-
-**Issue**: RPC methods not being called
-- Check: RPC attribute configuration (`RpcMode`, `CallLocal`)
-- Check: Is `Multiplayer.MultiplayerPeer` set correctly?
-- Check: Method must be declared `private` or `public`, not `protected`
-
-**Issue**: "Variant-incompatible type" error
-- Solution: Never send custom objects directly via RPC
-- Solution: Always serialize to JSON string first
-
 ## 📚 Further Reading
 
 - [Godot High-Level Multiplayer Docs](https://docs.godotengine.org/en/stable/tutorials/networking/high_level_multiplayer.html)
@@ -357,16 +344,4 @@ Logger.Error("Connection failed");        // Use for critical errors
 
 ## 📄 License
 
-This project is released as public domain / MIT License - use it however you want!
-
-## 🤝 Contributing
-
-This is an educational example project. Feel free to:
-- Fork and extend it
-- Use it in your own projects
-- Submit improvements via pull requests
-- Share it with others learning Godot networking
-
-## ✨ Credits
-
-Created as a demonstration of clean multiplayer lobby architecture in Godot 4 with C#.
+MIT
