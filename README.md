@@ -2,6 +2,8 @@
 
 A minimal, well-documented example demonstrating **RPC-based player name synchronization** in a multiplayer lobby using Godot 4 with C#.
 
+![Sample](docs/assets/lobby_example.gif)
+
 
 ## 🏗️ Architecture Overview
 
