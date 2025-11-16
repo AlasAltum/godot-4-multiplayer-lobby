@@ -2,14 +2,6 @@
 
 A minimal, well-documented example demonstrating **RPC-based player name synchronization** in a multiplayer lobby using Godot 4 with C#.
 
-## 🎯 What This Project Demonstrates
-
-- **Listen Server Model**: Host acts as both server and player
-- **RPC Communication**: Sending and receiving complex data (player names, IDs) across network
-- **JSON Serialization**: How to transmit custom objects via RPC (Godot RPC only supports Variant types)
-- **Unified Lobby**: Single UI script that adapts for both Host and Client roles
-- **MVC Pattern**: Clean separation of data (Model), UI (View), and logic (Controller)
-- **Signal-Based Updates**: Decoupled architecture using Godot signals
 
 ## 🏗️ Architecture Overview
 
@@ -27,10 +19,8 @@ Godot4MultiplayerLobby/
 │   └── utils/
 │       └── Logger.cs                 # Simple logging utility
 ├── scenes/
-│   ├── MainMenu.tscn                 # Entry point scene
-│   └── Lobby.tscn                    # Lobby UI scene
-└── docs/
-    └── RPC_FLOW.md                   # Detailed RPC flow documentation
+    ├── MainMenu.tscn                 # Entry point scene
+    └── Lobby.tscn                    # Lobby UI scene
 ```
 
 ### MVC Pattern Implementation
@@ -45,51 +35,165 @@ Godot4MultiplayerLobby/
 **Controller**:
 - `Lobby.cs`: Handles user input, updates model, refreshes view
 
-## 🔄 RPC Flow Explained
 
-### When a Client Connects:
 
-```
-1. [CLIENT] Clicks "Join" button
-   └─> Creates ENetMultiplayerPeer and connects to server
 
-2. [SERVER] Detects connection via PeerConnected signal
-   └─> Creates placeholder entry in PlayersData
-   └─> Sends RPC to client: RequestPlayerName()
 
-3. [CLIENT] Receives RequestPlayerName() RPC
-   └─> Retrieves local player name from UI
-   └─> Sends RPC to server: ReceivePlayerName(playerDataJson)
+## RPC Flow Detailed Documentation
 
-4. [SERVER] Receives ReceivePlayerName() RPC
-   └─> Deserializes JSON to PlayerData object
-   └─> Updates PlayersData dictionary
-   └─> Multicasts to ALL clients: SyncAllPlayers(allPlayersJson)
+This document provides a deep dive into the RPC (Remote Procedure Call) flow used in this multiplayer lobby system.
 
-5. [ALL CLIENTS + SERVER] Receive SyncAllPlayers() RPC
-   └─> Deserialize complete player list
-   └─> Update local PlayersData dictionary
-   └─> Emit PlayerListUpdated signal
-   └─> UI updates automatically via signal subscription
-```
 
-### RPC Method Signatures
+## Complete Player Connection Flow
+
+
+### Step 1: Server Opens Connection
+
+**Location**: `Lobby.cs` → `OnHostPressed()`
 
 ```csharp
-// SERVER -> CLIENT: Request player info
-[Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = false)]
-private void RequestPlayerName()
-
-// CLIENT -> SERVER: Send player info
-[Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = false)]
-private void ReceivePlayerName(string playerDataJson)
-
-// SERVER -> ALL: Synchronize complete player list
-[Rpc(MultiplayerApi.RpcMode.Authority, CallLocal = true)]
-private void SyncAllPlayers(string allPlayersJson)
+MultiplayerManager.Instance.HostServer("127.0.0.1");
 ```
 
-## 🚀 Quick Start
+**What Happens**:
+- Creates `ENetMultiplayerPeer`
+- Calls `peer.CreateClient(ip, port)`
+- Sets `Multiplayer.MultiplayerPeer = peer`
+- Godot automatically attempts connection
+
+
+### Step 1: Client Initiates Connection
+
+**Location**: `Lobby.cs` → `OnJoinPressed()`
+
+```csharp
+MultiplayerManager.Instance.JoinServer("127.0.0.1");
+```
+
+**What Happens**:
+- Creates `ENetMultiplayerPeer`
+- Calls `peer.CreateClient(ip, port)`
+- Sets `Multiplayer.MultiplayerPeer = peer`
+- Godot automatically attempts connection
+
+
+### Step 2: Server Detects Connection
+
+**Location**: `MultiplayerManager.cs` → `OnPeerConnected()`
+
+**Trigger**: Godot's built-in `Multiplayer.PeerConnected` signal fires
+
+```csharp
+private void OnPeerConnected(long peerId)
+{
+    if (Multiplayer.IsServer())
+    {
+        // Create placeholder
+        PlayersData[peerId] = new PlayerData("<Connecting...>", peerId);
+        
+        // Ask client for their name
+        RpcId(peerId, MethodName.Client_GetRequestPlayerName);
+    }
+}
+```
+
+**Network Traffic**:
+```
+SERVER --[RPC: Client_GetRequestPlayerName()]--> CLIENT (peerId)
+```
+
+### Step 3: Client Receives Request
+
+**Location**: `MultiplayerManager.cs` → `Client_GetRequestPlayerName()`
+
+```csharp
+[Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = false)]
+private void Client_GetRequestPlayerName()
+{
+    string localPlayerName = GetPlayerNameFromUI();
+    long localPeerId = Multiplayer.GetUniqueId();
+    
+    PlayerData playerData = new PlayerData(localPlayerName, localPeerId);
+    
+    // Send to server (ID 1 is always the server)
+    RpcId(1, MethodName.Server_ReceivePlayerName, playerData.AsJsonString());
+}
+```
+
+**Why JSON?**
+- `PlayerData` is a C# class (not Variant-compatible)
+- RPC can only send Variant types
+- Solution: Serialize to JSON string, which IS Variant-compatible
+
+**Network Traffic**:
+```
+CLIENT --[RPC: Server_ReceivePlayerName(json)]--> SERVER
+```
+
+### Step 4: Server Receives Player Data
+**Location**: `MultiplayerManager.cs` → `Server_ReceivePlayerName()`
+
+**Network Traffic**:
+```
+SERVER --[RPC: Multicast_SyncAllPlayers(jsonOfAllPlayers)]--> ALL CLIENTS
+       --[Also runs locally on server (CallLocal = true)]
+```
+
+### Step 5: All Peers Synchronize
+
+**Location**: `MultiplayerManager.cs` → `Multicast_SyncAllPlayers()`
+
+```csharp
+[Rpc(MultiplayerApi.RpcMode.Authority, CallLocal = true)]
+private void Multicast_SyncAllPlayers(string allPlayersJson)
+{
+    // Update local dictionary with server's authoritative data
+    PlayersData = DeserializePlayersDictionary(allPlayersJson);
+    
+    // Notify UI that player list changed
+    EmitSignal(SignalName.PlayerListUpdated);
+}
+```
+
+**Why CallLocal = true?**
+- Server needs to update its own UI too *if using listen servers*
+- Without it, server would send to clients but not update itself
+
+
+### Step 6: UI Updates
+
+**Location**: `Lobby.cs` → `OnPlayerListUpdated()`
+
+```csharp
+private void OnPlayerListUpdated()
+{
+    UpdatePlayerListUI();  // Rebuilds player list from PlayersData
+}
+```
+
+**Signal Flow**:
+```
+MultiplayerManager.Multicast_SyncAllPlayers()
+    └─> EmitSignal(PlayerListUpdated)
+        └─> Lobby.OnPlayerListUpdated()
+            └─> UpdatePlayerListUI()
+```
+
+## Complete Flow Diagram
+
+![CompleteFlow](docs/assets/CompleteDiagramFLow.png)
+
+
+## Name Update Flow
+
+When a player changes their name in real-time:
+
+![NameUpdateFlow](docs/assets/NameUpdateFlow.png)
+
+## Disconnection Flow
+
+![ClientDisconnectionFlow](docs/assets/ClientDisconnection.png)
+
 
 ### Prerequisites
 
